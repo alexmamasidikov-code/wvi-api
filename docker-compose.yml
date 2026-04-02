@@ -1,0 +1,21 @@
+version: '3.8'
+
+services:
+  wvi-api:
+    build: .
+    container_name: wvi-api
+    restart: unless-stopped
+    ports:
+      - "${PORT:-8091}:8091"
+    environment:
+      - PORT=8091
+      - NODE_ENV=production
+      - PRIVY_APP_ID=${PRIVY_APP_ID:-}
+      - PRIVY_APP_SECRET=${PRIVY_APP_SECRET:-}
+      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY:-}
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:8091/api/v1/health/server-status"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s

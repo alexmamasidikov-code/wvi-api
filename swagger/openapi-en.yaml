@@ -1,0 +1,1636 @@
+openapi: 3.1.0
+info:
+  title: WVI — Wellness Vitality Index API
+  description: |
+    # WVI API
+
+    Complete REST API for collecting biometric data from V8 BLE wearable devices,
+    calculating Wellness Vitality Index (0-100), detecting 18 emotional states via Fuzzy Logic,
+    identifying 64 activity types with TRIMP and HR zones, AI-powered interpretation via Claude
+    Genius Layer (8 perspectives), and generating premium reports.
+
+    ## Key Features
+    - **10 normalized metrics**
+    - **18 emotions**
+    - **64 activity types**
+    - **AI Genius Layer**
+    - **108 REST endpoints**
+  version: 1.0.0
+  contact:
+    name: WVI Engine
+    email: api@wvi.health
+  license:
+    name: Proprietary
+
+servers:
+  - url: https://api.wvi.health/v1
+    description: Production
+  - url: http://localhost:8080/api/v1
+    description: Local development
+
+tags:
+  - name: Auth
+    description: |
+      Registration, authentication, JWT tokens
+  - name: Users
+    description: |
+      User profile, personal settings, calibrated norms
+  - name: Biometrics
+    description: |
+      Raw biometric data from V8 BLE device (HR, HRV, SpO2, Temperature, Sleep, PPI, ECG, Blood Pressure, Activity, Stress)
+  - name: WVI
+    description: |
+      Wellness Vitality Index — score calculation, history, trends, predictions, simulations
+  - name: Emotions
+    description: |
+      18 emotional states — current, history, distribution, heatmap, transitions, triggers
+  - name: Activities
+    description: |
+      64 activity types — auto-detection, load, TRIMP, HR zones, recovery
+  - name: Sleep
+    description: |
+      Detailed sleep analytics — phases, architecture, consistency, debt
+  - name: AI
+    description: |
+      AI interpretation via Claude Genius Layer, recommendations, chat, insights
+  - name: Reports
+    description: |
+      Report generation (PDF, HTML, Slides) and management
+  - name: Alerts
+    description: |
+      Critical alerts (4 levels), notification settings, history
+  - name: Device
+    description: |
+      V8 BLE device management — status, sync, auto-monitoring, manual measurements
+  - name: Training
+    description: |
+      Training recommendations, weekly plan, overtraining risk, optimal time
+  - name: Risk
+    description: |
+      Health risk assessment — VaR, anomalies, chronic flags, correlations, volatility
+  - name: Dashboard
+    description: |
+      Dashboard data — widgets, morning brief, evening review
+  - name: Export
+    description: |
+      Data export — CSV, JSON, doctor summary PDF
+  - name: Settings
+    description: |
+      User settings and notification preferences
+  - name: Health
+    description: |
+      Server health checks, API version
+
+# ═══════════════════════════════════════════════════════════════
+# PATHS — 108 ENDPOINTS
+# ═══════════════════════════════════════════════════════════════
+
+paths:
+
+  # ═══ AUTH (3) ═══
+
+  /auth/register:
+    post:
+      tags: [Auth]
+      operationId: registerUser
+      summary: Register a new user
+      description: |
+        Creates a new user account. Returns JWT token.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [email, password, name]
+              properties:
+                email:
+                  type: string
+                  format: email
+                  description: "Email address"
+                  example: "user@wvi.health"
+                password:
+                  type: string
+                  minLength: 8
+                  description: "Password (min 8 chars)"
+                name:
+                  type: string
+                  description: "User name"
+                  example: "Alexander"
+      responses:
+          description: User created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuthResponse'
+          description: Email already exists
+
+  /auth/login:
+    post:
+      tags: [Auth]
+      operationId: loginUser
+      summary: Login
+      description: |
+        Authenticate with email and password. Returns JWT access token and refresh token.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [email, password]
+              properties:
+                email:
+                  type: string
+                  format: email
+                password:
+                  type: string
+      responses:
+          description: Login successful
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuthResponse'
+          description: Invalid credentials
+
+  /auth/refresh:
+    post:
+      tags: [Auth]
+      operationId: refreshToken
+      summary: Refresh JWT token
+      description: |
+        Exchange a valid refresh token for a new access token.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [refreshToken]
+              properties:
+                refreshToken:
+                  type: string
+      responses:
+          description: New tokens issued
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuthResponse'
+
+  # ═══ USERS (4) ═══
+
+  /users/me:
+    get:
+      tags: [Users]
+      operationId: getUserProfile
+      summary: Get profile
+      description: |
+        Get current user's profile including personal data used for calibration (gender, age, height, weight, goals).
+      security:
+        - bearerAuth: []
+      responses:
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UserProfile'
+    put:
+      tags: [Users]
+      operationId: updateUserProfile
+      summary: Update profile
+      description: |
+        Update personal data. Changes trigger recalibration of personal norms (restingHR, maxHR, ageBasedMaxHRV).
+      security:
+        - bearerAuth: []
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UserProfileUpdate'
+      responses:
+          description: Profile updated
+
+  /users/me/norms:
+    get:
+      tags: [Users]
+      operationId: getPersonalNorms
+      summary: Get personal norms
+      description: |
+        Auto-calibrated personal baselines:
+        - restingHR: average HR during 01:00-05:00 over last 7 days
+        - baseTemp: median temperature over 14 days
+        - maxHR: 208 - 0.7 * age (Tanaka formula)
+        - ageBasedMaxHRV: HRV norm for user's age group
+        - correlations: which metrics are correlated for THIS user
+
+        - maxHR: 208 - 0.7 * age
+      security:
+        - bearerAuth: []
+      responses:
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PersonalNorms'
+
+  /users/me/norms/calibrate:
+    post:
+      tags: [Users]
+      operationId: triggerCalibration
+      summary: Trigger recalibration
+      description: |
+        Manually trigger recalibration of all personal norms. Normally runs automatically every 14 days.
+      security:
+        - bearerAuth: []
+      responses:
+          description: Calibration started
+
+  # ═══ BIOMETRICS (24) ═══
+
+  /biometrics/sync:
+    post:
+      tags: [Biometrics]
+      operationId: syncBiometrics
+      summary: Bulk sync all data
+      description: |
+        Upload all biometric data types in a single request after BLE synchronization with V8 device.
+        Accepts HR, HRV+Stress+BP, SpO2, Temperature, Sleep, PPI, Activity data.
+        Triggers WVI recalculation and alert checks.
+
+        SDK mapping:
+        - heartRate ← GetContinuousHRDataWithMode / GetSingleHRDataWithMode (DynamicHR_V8=28, StaticHR_V8=29)
+        - hrv ← GetHRVDataWithMode (HRVData_V8=41) → {hrv, stress, heartRate, systolicBP, diastolicBP}
+        - spo2 ← GetAutomaticSpo2DataWithMode (AutomaticSpo2Data_V8=45) → {automaticSpo2Data}
+        - temperature ← GetTemperatureDataWithMode (TemperatureData_V8=48) → {temperature}
+        - sleep ← GetDetailSleepDataWithMode (DetailSleepData_V8=27) → {totalSleepTime, arraySleepQuality}
+        - ppi ← GetPPIDataWithMode (ppiData_V8=96) → {arrayPPIData}
+        - activity ← GetTotalActivityDataWithMode (TotalActivityData_V8=25) + GetActivityModeDataWithMode (ActivityModeData_V8=30)
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/BiometricSync'
+      responses:
+          description: Data synced, WVI recalculated
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  recordsProcessed:
+                    type: integer
+                    description: "Total records saved"
+                    example: 847
+                  wviRecalculated:
+                    type: boolean
+                    example: true
+                  newWVI:
+                    type: number
+                    description: "New WVI score"
+                    example: 78.5
+                  newEmotion:
+                    type: string
+                    description: "Detected emotion"
+                    example: "focused"
+                  newActivity:
+                    type: string
+                    description: "Detected activity"
+                    example: "sitting_working"
+                  newAlerts:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Alert'
+
+  /biometrics/heart-rate:
+    get:
+      tags: [Biometrics]
+      operationId: getHeartRateHistory
+      summary: HR history
+      description: |
+        Heart rate history. Includes continuous monitoring (DynamicHR_V8) and single measurements (StaticHR_V8).
+        SDK: GetContinuousHRDataWithMode → arrayContinuousHR → {date, arrayHR}
+        SDK: GetSingleHRDataWithMode → arraySingleHR → {date, singleHR}
+
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/dateFrom'
+        - $ref: '#/components/parameters/dateTo'
+        - $ref: '#/components/parameters/granularity'
+      responses:
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/HeartRateRecord'
+                  stats:
+                    $ref: '#/components/schemas/MetricStats'
+    post:
+      tags: [Biometrics]
+      operationId: uploadHeartRate
+      summary: Upload HR data
+      description: |
+        Upload heart rate data from device.
+      security:
+        - bearerAuth: []
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/HeartRateUpload'
+      responses:
+          description: HR data saved
+
+  /biometrics/hrv:
+    get:
+      tags: [Biometrics]
+      operationId: getHRVHistory
+      summary: HRV + Stress + BP history
+      description: |
+        The richest endpoint: HRV (ms), stress (0-100), heart rate, systolic/diastolic blood pressure.
+        SDK: GetHRVDataWithMode (HRVData_V8=41) → arrayHrvData → {date, hrv, stress, heartRate, systolicBP, diastolicBP}
+
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/dateFrom'
+        - $ref: '#/components/parameters/dateTo'
+      responses:
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/HRVRecord'
+                  stats:
+                    type: object
+                    properties:
+                      avgHRV:
+                        type: number
+                        description: "Average HRV (ms)"
+                      avgStress:
+                        type: number
+                        description: "Average stress (0-100)"
+                      avgBP:
+                        type: string
+                        description: "Average BP"
+                        example: "122/78"
+    post:
+      tags: [Biometrics]
+      operationId: uploadHRV
+      summary: Upload HRV data
+      security:
+        - bearerAuth: []
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/HRVUpload'
+      responses:
+          description: HRV data saved
+
+  /biometrics/spo2:
+    get:
+      tags: [Biometrics]
+      operationId: getSpO2History
+      summary: SpO2 history
+      description: |
+        Blood oxygen saturation history. Automatic and manual measurements.
+        SDK: GetAutomaticSpo2DataWithMode (AutomaticSpo2Data_V8=45) → arrayAutomaticSpo2Data → {date, automaticSpo2Data}
+
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/dateFrom'
+        - $ref: '#/components/parameters/dateTo'
+      responses:
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/SpO2Record'
+    post:
+      tags: [Biometrics]
+      operationId: uploadSpO2
+      summary: Upload SpO2
+      security:
+        - bearerAuth: []
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SpO2Upload'
+      responses:
+          description: SpO2 data saved
+
+  /biometrics/temperature:
+    get:
+      tags: [Biometrics]
+      operationId: getTemperatureHistory
+      summary: Temperature history
+      description: |
+        Body temperature history in Celsius.
+        SDK: GetTemperatureDataWithMode (TemperatureData_V8=48) → arrayemperatureData → {date, temperature}
+
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/dateFrom'
+        - $ref: '#/components/parameters/dateTo'
+      responses:
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/TemperatureRecord'
+    post:
+      tags: [Biometrics]
+      operationId: uploadTemperature
+      summary: Upload temperature
+      security:
+        - bearerAuth: []
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/TemperatureUpload'
+      responses:
+          description: Temperature data saved
+
+  /biometrics/sleep:
+    get:
+      tags: [Biometrics]
+      operationId: getSleepRawData
+      summary: Raw sleep data
+      description: |
+        Raw sleep data from device including phases array and activity during night.
+        SDK: GetDetailSleepDataWithMode (DetailSleepData_V8=27) → {startTime_SleepData, totalSleepTime, arraySleepQuality, sleepUnitLength}
+        Phase values: 0=awake, 1=light, 2=deep
+
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/dateFrom'
+        - $ref: '#/components/parameters/dateTo'
+      responses:
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/SleepRawRecord'
+    post:
+      tags: [Biometrics]
+      operationId: uploadSleep
+      summary: Upload sleep data
+      security:
+        - bearerAuth: []
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SleepUpload'
+      responses:
+          description: Sleep data saved
+
+  /biometrics/ppi:
+    get:
+      tags: [Biometrics]
+      operationId: getPPIHistory
+      summary: PPI history
+      description: |
+        Pulse-to-Pulse Interval data in milliseconds. Used for RMSSD and coherence calculation.
+        SDK: GetPPIDataWithMode (ppiData_V8=96) → arrayPPIData → {date, groupCount, currentIndex, arrayPPIData}
+
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/dateFrom'
+        - $ref: '#/components/parameters/dateTo'
+      responses:
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/PPIRecord'
+    post:
+      tags: [Biometrics]
+      operationId: uploadPPI
+      summary: Upload PPI
+      security:
+        - bearerAuth: []
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PPIUpload'
+      responses:
+          description: PPI data saved
+
+  /biometrics/ecg:
+    get:
+      tags: [Biometrics]
+      operationId: getECGSessions
+      summary: ECG sessions
+      description: |
+        ECG recording sessions with raw waveform data.
+        SDK: ECG_RawData_V8 (54) → {arrayEcgRawData, packetID}
+
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/dateFrom'
+        - $ref: '#/components/parameters/dateTo'
+      responses:
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  sessions:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/ECGSession'
+    post:
+      tags: [Biometrics]
+      operationId: uploadECG
+      summary: Upload ECG session
+      security:
+        - bearerAuth: []
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ECGUpload'
+      responses:
+          description: ECG session saved
+
+  /biometrics/activity:
+    get:
+      tags: [Biometrics]
+      operationId: getActivityRawData
+      summary: Raw activity data
+      description: |
+        Raw activity data including daily totals and exercise sessions.
+        SDK: GetTotalActivityDataWithMode (TotalActivityData_V8=25) + GetActivityModeDataWithMode (ActivityModeData_V8=30)
+
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/dateFrom'
+        - $ref: '#/components/parameters/dateTo'
+      responses:
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ActivityRawData'
+    post:
+      tags: [Biometrics]
+      operationId: uploadActivity
+      summary: Upload activity data
+      security:
+        - bearerAuth: []
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ActivityUpload'
+      responses:
+          description: Activity data saved
+
+  /biometrics/blood-pressure:
+    get:
+      tags: [Biometrics]
+      operationId: getBloodPressureHistory
+      summary: Blood pressure history
+      description: |
+        Blood pressure history extracted from HRV endpoint data (systolicBP, diastolicBP).
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/dateFrom'
+        - $ref: '#/components/parameters/dateTo'
+      responses:
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        timestamp:
+                          type: string
+                          format: date-time
+                        systolic:
+                          type: integer
+                          description: "mmHg"
+                        diastolic:
+                          type: integer
+                          description: "mmHg"
+
+  /biometrics/stress:
+    get:
+      tags: [Biometrics]
+      operationId: getStressHistory
+      summary: Stress level history
+      description: |
+        Stress level history (0-100) extracted from HRV endpoint.
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/dateFrom'
+        - $ref: '#/components/parameters/dateTo'
+      responses:
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        timestamp:
+                          type: string
+                          format: date-time
+                        stress:
+                          type: integer
+                          minimum: 0
+                          maximum: 100
+
+  /biometrics/breathing-rate:
+    get:
+      tags: [Biometrics]
+      operationId: getBreathingRate
+      summary: Breathing rate
+      description: |
+        Breathing rate estimated from PPI interval patterns.
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/dateFrom'
+        - $ref: '#/components/parameters/dateTo'
+      responses:
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        timestamp:
+                          type: string
+                          format: date-time
+                        breathsPerMinute:
+                          type: number
+                        regularity:
+                          type: number
+                          description: "0-1 (0=chaotic, 1=rhythmic)"
+
+  /biometrics/rmssd:
+    get:
+      tags: [Biometrics]
+      operationId: getRMSSDHistory
+      summary: RMSSD history
+      description: |
+        Root Mean Square of Successive Differences computed from PPI intervals. Key HRV time-domain metric.
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/dateFrom'
+        - $ref: '#/components/parameters/dateTo'
+      responses:
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        timestamp:
+                          type: string
+                          format: date-time
+                        rmssd:
+                          type: number
+                          description: "RMSSD in ms"
+
+  /biometrics/coherence:
+    get:
+      tags: [Biometrics]
+      operationId: getCoherenceHistory
+      summary: PPI coherence history
+      description: |
+        PPI coherence (0-1). High coherence = rhythmic pulse pattern (meditation, calm). Low = chaotic (stress, anxiety).
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/dateFrom'
+        - $ref: '#/components/parameters/dateTo'
+      responses:
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        timestamp:
+                          type: string
+                          format: date-time
+                        coherence:
+                          type: number
+                          minimum: 0
+                          maximum: 1
+
+  /biometrics/realtime:
+    get:
+      tags: [Biometrics]
+      operationId: getRealtimeBiometrics
+      summary: Last 5 min readings
+      description: |
+        Most recent biometric readings (last 5 minutes) for all available metrics.
+      security:
+        - bearerAuth: []
+      responses:
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RealtimeBiometrics'
+
+  /biometrics/summary:
+    get:
+      tags: [Biometrics]
+      operationId: getDailySummary
+      summary: Daily summary
+      description: |
+        All metrics min/max/avg for a given date.
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: date
+          in: query
+          schema:
+            type: string
+            format: date
+          description: "Date (YYYY-MM-DD). Defaults to today."
+      responses:
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DailySummary'
+
+  # ═══ WVI (8) ═══
+
+  /wvi/current:
+    get:
+      tags: [WVI]
+      operationId: getCurrentWVI
+      summary: Current WVI snapshot
+      description: |
+        Full current state: WVI score (0-100), all 10 normalized sub-metrics,
+        current emotion (primary + secondary), current activity, raw biometric values.
+
+      security:
+        - bearerAuth: []
+      responses:
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WVISnapshot'
+
+  /wvi/history:
+    get:
+      tags: [WVI]
+      operationId: getWVIHistory
+      summary: WVI history
+      description: |
+        WVI score history with configurable granularity (5min for realtime, 1d for monthly views).
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/dateFrom'
+        - $ref: '#/components/parameters/dateTo'
+        - name: granularity
+          in: query
+          schema:
+            type: string
+            enum: [5min, 30min, 1h, 1d]
+            default: 30min
+      responses:
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WVIHistory'
+
+  /wvi/trends:
+    get:
+      tags: [WVI]
+      operationId: getWVITrends
+      summary: Trend analysis
+      description: |
+        Trend analysis for 24h/7d/30d: average, min, max, direction, slope, anomalies count.
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: period
+          in: query
+          required: true
+          schema:
+            type: string
+            enum: [24h, 7d, 30d]
+      responses:
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WVITrendReport'
+
+  /wvi/predict:
+    get:
+      tags: [WVI]
+      operationId: predictWVI
+      summary: Predict WVI
+      description: |
+        Predict future WVI using Holt double exponential smoothing. Up to 24 hours ahead.
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: hoursAhead
+          in: query
+          schema:
+            type: integer
+            default: 6
+            minimum: 1
+            maximum: 24
+      responses:
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WVIPrediction'
+
+  /wvi/simulate:
+    post:
+      tags: [WVI]
+      operationId: simulateWVI
+      summary: What-if simulation"
+      description: |
+        Systems dynamics simulation. Model feedback loops to predict how actions affect WVI.
+        Example: "Add 30 min daily walking" → predicted WVI change over 7/14/30 days.
+
+        Feedback loops modeled:
+        1. Exercise↑ → Sleep↑ → Stress↓ → HRV↑ → Energy↑ → More Exercise (reinforcing)
+        2. Poor Sleep → Stress↑ → Inflammation(temp↑) → Pain → Less Activity → Worse Sleep (reinforcing)
+        3. Meditation → HRV↑ → Emotional Balance → Focus↑ → Productivity → Joy → Motivation (reinforcing)
+      security:
+        - bearerAuth: []
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SimulationRequest'
+      responses:
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SimulationResult'
+
+  /wvi/circadian:
+    get:
+      tags: [WVI]
+      operationId: getCircadianPattern
+      summary: Circadian WVI pattern
+      description: |
+        Average WVI by hour of day over last 30 days. Shows when you're at peak and lowest.
+      security:
+        - bearerAuth: []
+      responses:
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  hourlyAverage:
+                    type: array
+                    description: "24 values (index=hour)"
+                    items:
+                      type: number
+                  peakHour:
+                    type: integer
+                    description: "Hour with highest WVI"
+                  lowHour:
+                    type: integer
+                    description: "Hour with lowest WVI"
+
+  /wvi/correlations:
+    get:
+      tags: [WVI]
+      operationId: getWVICorrelations
+      summary: Metric correlations
+      description: |
+        Pearson correlation matrix between all 10 WVI sub-metrics for this user.
+      security:
+        - bearerAuth: []
+      responses:
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties:
+                  type: object
+                  additionalProperties:
+                    type: number
+
+  /wvi/breakdown:
+    get:
+      tags: [WVI]
+      operationId: getWVIBreakdown
+      summary: WVI breakdown
+      description: |
+        Shows contribution of each metric to final WVI score (value × weight).
+      security:
+        - bearerAuth: []
+      responses:
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  totalWVI:
+                    type: number
+                  contributions:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        metric:
+                          type: string
+                        score:
+                          type: number
+                        weight:
+                          type: number
+                        contribution:
+                          type: number
+                          description: "score × weight"
+
+  # (remaining 60+ endpoints follow same bilingual pattern)
+  # Remaining endpoints abbreviated — full spec continues with same structure for:
+  # /emotions/*, /activities/*, /sleep/*, /ai/*, /reports/*, /alerts/*,
+  # /device/*, /training/*, /risk/*, /dashboard/*, /export/*, /settings/*, /health/*
+
+# ═══════════════════════════════════════════════════════════════
+# COMPONENTS
+# ═══════════════════════════════════════════════════════════════
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: "JWT token from"
+
+  parameters:
+    dateFrom:
+      name: from
+      in: query
+      schema:
+        type: string
+        format: date-time
+      description: "Start of period (ISO 8601)"
+    dateTo:
+      name: to
+      in: query
+      schema:
+        type: string
+        format: date-time
+      description: "End of period (ISO 8601)"
+    granularity:
+      name: granularity
+      in: query
+      schema:
+        type: string
+        enum: [1min, 5min, 30min, 1h, 1d]
+        default: 5min
+      description: "Data granularity"
+
+  schemas:
+
+    AuthResponse:
+      type: object
+      description: "Authentication response"
+      properties:
+        token:
+          type: string
+          description: "JWT access token"
+        refreshToken:
+          type: string
+          description: "Refresh token for /auth/refresh"
+        expiresIn:
+          type: integer
+          description: "Token TTL in seconds"
+          example: 3600
+
+    UserProfile:
+      type: object
+      description: "User profile"
+      properties:
+        id:
+          type: string
+        email:
+          type: string
+          format: email
+        name:
+          type: string
+        gender:
+          type: string
+          enum: [male, female]
+          description: "Affects HR"
+        age:
+          type: integer
+          description: "Affects maxHR, ageBasedMaxHRV"
+        height:
+          type: integer
+          description: "cm"
+        weight:
+          type: number
+          description: "kg"
+        stepGoal:
+          type: integer
+          description: "Daily step goal"
+        sleepGoalHours:
+          type: number
+          description: "Sleep goal in hours"
+        createdAt:
+          type: string
+          format: date-time
+
+    UserProfileUpdate:
+      type: object
+      properties:
+        name:
+          type: string
+        gender:
+          type: string
+          enum: [male, female]
+        age:
+          type: integer
+          minimum: 5
+          maximum: 100
+        height:
+          type: integer
+          minimum: 50
+          maximum: 250
+        weight:
+          type: number
+          minimum: 20
+          maximum: 300
+        stepGoal:
+          type: integer
+          minimum: 1000
+          maximum: 50000
+        sleepGoalHours:
+          type: number
+          minimum: 4
+          maximum: 12
+
+    PersonalNorms:
+      type: object
+      description: "Auto-calibrated personal baselines"
+      properties:
+        restingHR:
+          type: number
+          description: "Average HR 01:00-05:00, 7d"
+          example: 62
+        baseTemp:
+          type: number
+          description: "Median temperature, 14d"
+          example: 36.55
+        maxHR:
+          type: number
+          description: "208 - 0.7 * age (Tanaka)"
+          example: 185.6
+        hrReserve:
+          type: number
+          description: "maxHR - restingHR"
+          example: 123.6
+        ageBasedMaxHRV:
+          type: number
+          description: "HRV norm for age group"
+          example: 62
+        lastCalibrated:
+          type: string
+          format: date-time
+        correlations:
+          type: object
+          description: "Personal metric correlations"
+          properties:
+            sleep_stress:
+              type: number
+              example: -0.72
+            activity_mood:
+              type: number
+              example: 0.65
+            hrv_sleep:
+              type: number
+              example: 0.58
+
+    BiometricSync:
+      type: object
+      description: "Bulk biometric data upload"
+      properties:
+        deviceMac:
+          type: string
+          description: "BLE device MAC address"
+        syncTimestamp:
+          type: string
+          format: date-time
+        heartRate:
+          type: object
+          properties:
+            continuous:
+              type: array
+              items:
+                type: object
+                properties:
+                  date:
+                    type: string
+                    format: date-time
+                  values:
+                    type: array
+                    items:
+                      type: integer
+            single:
+              type: array
+              items:
+                type: object
+                properties:
+                  date:
+                    type: string
+                    format: date-time
+                  bpm:
+                    type: integer
+        hrv:
+          type: array
+          items:
+            type: object
+            properties:
+              date:
+                type: string
+                format: date-time
+              hrv:
+                type: number
+              stress:
+                type: integer
+              heartRate:
+                type: integer
+              systolicBP:
+                type: integer
+              diastolicBP:
+                type: integer
+        spo2:
+          type: object
+          properties:
+            automatic:
+              type: array
+              items:
+                type: object
+                properties:
+                  date:
+                    type: string
+                    format: date-time
+                  spo2:
+                    type: number
+            manual:
+              type: array
+              items:
+                type: object
+                properties:
+                  date:
+                    type: string
+                    format: date-time
+                  spo2:
+                    type: number
+        temperature:
+          type: array
+          items:
+            type: object
+            properties:
+              date:
+                type: string
+                format: date-time
+              temperature:
+                type: number
+        sleep:
+          type: array
+          items:
+            type: object
+            properties:
+              startTime:
+                type: string
+                format: date-time
+              totalMinutes:
+                type: integer
+              phases:
+                type: array
+                items:
+                  type: integer
+                  enum: [0, 1, 2]
+              unitLengthMinutes:
+                type: integer
+        ppi:
+          type: array
+          items:
+            type: object
+            properties:
+              date:
+                type: string
+                format: date-time
+              intervals:
+                type: array
+                items:
+                  type: number
+        activity:
+          type: object
+          properties:
+            daily:
+              type: array
+              items:
+                type: object
+                properties:
+                  date:
+                    type: string
+                    format: date
+                  steps:
+                    type: integer
+                  calories:
+                    type: number
+                  distanceKm:
+                    type: number
+            sessions:
+              type: array
+              items:
+                type: object
+                properties:
+                  startTime:
+                    type: string
+                    format: date-time
+                  endTime:
+                    type: string
+                    format: date-time
+                  type:
+                    type: integer
+                    description: "SDK ACTIVITYMODE_V8 (0-17)"
+                  mets:
+                    type: number
+
+    HeartRateRecord:
+      type: object
+      properties:
+        timestamp:
+          type: string
+          format: date-time
+        bpm:
+          type: integer
+          description: "Heart rate BPM"
+        type:
+          type: string
+          enum: [continuous, single, realtime]
+          description: "Measurement type"
+
+    HRVRecord:
+      type: object
+      properties:
+        timestamp:
+          type: string
+          format: date-time
+        hrv:
+          type: number
+          description: "HRV in ms"
+        stress:
+          type: integer
+          description: "Stress level 0-100"
+        heartRate:
+          type: integer
+          description: "HR during measurement"
+        systolicBP:
+          type: integer
+          description: "Systolic BP mmHg"
+        diastolicBP:
+          type: integer
+          description: "Diastolic BP mmHg"
+
+    SpO2Record:
+      type: object
+      properties:
+        timestamp:
+          type: string
+          format: date-time
+        spo2:
+          type: number
+          description: "Blood oxygen %"
+        type:
+          type: string
+          enum: [automatic, manual]
+
+    TemperatureRecord:
+      type: object
+      properties:
+        timestamp:
+          type: string
+          format: date-time
+        celsius:
+          type: number
+          description: "Body temperature °C"
+
+    PPIRecord:
+      type: object
+      properties:
+        timestamp:
+          type: string
+          format: date-time
+        intervals:
+          type: array
+          items:
+            type: number
+          description: "PPI intervals in ms"
+        rmssd:
+          type: number
+          description: "Computed RMSSD"
+        coherence:
+          type: number
+          description: "Coherence 0-1"
+
+    ECGSession:
+      type: object
+      properties:
+        sessionId:
+          type: string
+        timestamp:
+          type: string
+          format: date-time
+        durationSeconds:
+          type: integer
+        dataPoints:
+          type: integer
+        downloadUrl:
+          type: string
+
+    MetricStats:
+      type: object
+      description: "Statistical summary"
+      properties:
+        min:
+          type: number
+        max:
+          type: number
+        avg:
+          type: number
+        count:
+          type: integer
+
+    WVISnapshot:
+      type: object
+      description: "Complete WVI state"
+      properties:
+        wviScore:
+          type: number
+          description: "WVI 0-100"
+          example: 78.5
+        level:
+          type: string
+          enum: [superb, excellent, good, moderate, attention, critical, dangerous]
+          description: |
+            95-100: superb
+            85-94: excellent
+            70-84: good
+            55-69: moderate
+            40-54: attention
+            25-39: critical
+            0-24: dangerous
+        metrics:
+          type: object
+          description: "10 normalized sub-metrics (0-100)"
+          properties:
+            heartRateScore:
+              type: number
+              description: "HR closeness to resting"
+            hrvScore:
+              type: number
+              description: "HRV vs age norm"
+            stressScore:
+              type: number
+              description: "Inverted stress (100=calm)"
+            spo2Score:
+              type: number
+              description: "Blood oxygen score"
+            temperatureScore:
+              type: number
+              description: "Temp deviation from norm"
+            sleepScore:
+              type: number
+              description: "Sleep quality composite"
+            activityScore:
+              type: number
+              description: "Activity vs goals"
+            bpScore:
+              type: number
+              description: "BP closeness to 120"
+            ppiCoherenceScore:
+              type: number
+              description: "PPI coherence"
+            emotionalWellbeingScore:
+              type: number
+              description: "24h emotion history score"
+        emotion:
+          $ref: '#/components/schemas/EmotionResult'
+        activity:
+          $ref: '#/components/schemas/ActivityResult'
+        rawData:
+          type: object
+          properties:
+            heartRate:
+              type: integer
+            hrv:
+              type: number
+            stress:
+              type: integer
+            spo2:
+              type: number
+            temperature:
+              type: number
+            systolicBP:
+              type: integer
+            diastolicBP:
+              type: integer
+            steps:
+              type: integer
+        timestamp:
+          type: string
+          format: date-time
+
+    EmotionResult:
+      type: object
+      description: "Detected emotion"
+      properties:
+        primary:
+          type: string
+          enum:
+            - calm
+            - relaxed
+            - joyful
+            - energized
+            - excited
+            - focused
+            - meditative
+            - recovering
+            - drowsy
+            - stressed
+            - anxious
+            - angry
+            - frustrated
+            - fearful
+            - sad
+            - exhausted
+            - pain
+            - flow
+          description: |
+            18 emotional states
+            **Positive
+            **Neutral
+            **Negative
+            **Physiological
+        primaryConfidence:
+          type: number
+          description: "0-1 confidence"
+        secondary:
+          type: string
+          description: "Second most likely emotion"
+        secondaryConfidence:
+          type: number
+        emoji:
+          type: string
+        description:
+          type: string
+          description: "Human-readable description"
+        category:
+          type: string
+          enum: [positive, neutral, negative, physiological]
+
+    ActivityResult:
+      type: object
+      description: "Detected activity with full breakdown"
+      properties:
+        type:
+          type: string
+          description: "One of 64 activity types"
+        category:
+          type: string
+          enum: [sleep, rest, walking, running, cardio_machine, strength, mind_body, sports, daily, physiological, recovery, mental]
+          description: "Activity category"
+        emoji:
+          type: string
+        description:
+          type: string
+        confidence:
+          type: number
+          description: "Detection confidence 0-1"
+        loadLevel:
+          type: integer
+          description: "0=none, 1=minimal, 2=light, 3=moderate, 4=high, 5=intense, 6=extreme"
+        loadLevelName:
+          type: string
+          enum: [none, minimal, light, moderate, high, intense, extreme]
+        loadScore:
+          type: number
+          description: "Load score 0-100"
+        loadTarget:
+          type: string
+          enum: [cardio, muscular, mental, mixed]
+          description: "What is being loaded"
+        heartRateZone:
+          type: integer
+          description: "HR zone 0-5"
+        caloriesPerMinute:
+          type: number
+          description: "Energy expenditure"
+        durationMinutes:
+          type: number
+          description: "Current activity duration"
+        cumulativeTRIMP:
+          type: number
+          description: "Daily TRIMP total"
+        contextualAdvice:
+          type: string
+          description: "Context-aware recommendation"
+
+    Alert:
+      type: object
+      description: "Health alert"
+      properties:
+        id:
+          type: string
+        level:
+          type: string
+          enum: [info, warning, critical, emergency]
+          description: |
+            info: informational
+            warning: needs attention
+            critical: immediate action needed
+            emergency: potentially dangerous
+        message:
+          type: string
+          type: string
+        metric:
+          type: string
+        value:
+          type: number
+        threshold:
+          type: number
+        timestamp:
+          type: string
+          format: date-time
+        acknowledged:
+          type: boolean
+
+    # Additional schemas referenced but abbreviated for file size:
+    # HeartRateUpload, HRVUpload, SpO2Upload, TemperatureUpload,
+    # SleepUpload, SleepRawRecord, PPIUpload, ECGUpload,
+    # ActivityRawData, ActivityUpload, RealtimeBiometrics,
+    # DailySummary, WVIHistory, WVITrendReport, WVIPrediction,
+    # SimulationRequest, SimulationResult
+    # (These follow the same bilingual pattern as schemas above)
